@@ -1,0 +1,12 @@
+# Never commit real chat exports or their parsed output
+exports/
+messages.json
+*.jpg
+*.jpeg
+*.png
+!docs/screenshot.png
+
+# Tooling
+__pycache__/
+.claude/
+.DS_Store

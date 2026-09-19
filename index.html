@@ -1,0 +1,1390 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>fig-viewer</title>
+<style>
+  :root{
+    color-scheme: dark;
+    --bg: #180F22;
+    --bg-edge: #140C1C;
+    --bubble-user: #5B2A86;
+    --bubble-user-hi: #6B3699;
+    --bubble-companion: rgba(92,78,110,0.60);
+    --bubble-companion-hi: rgba(104,90,124,0.66);
+    --text: #F2ECF7;
+    --text-dim: #C9BFDA;
+    --action-float: #8D82A3;
+    --meta: #5f5470;
+    --divider: rgba(255,255,255,0.06);
+    --gold: #E2B04A;
+    --gold-soft: rgba(226,176,74,0.55);
+    --radius: 20px;
+    --radius-cut: 4px;
+  }
+
+  *{ box-sizing: border-box; }
+
+  html, body {
+    height: 100%;
+    margin: 0;
+  }
+
+  body {
+    background: radial-gradient(120% 100% at 50% 0%, var(--bg) 0%, var(--bg-edge) 100%);
+    color: var(--text);
+    font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    overflow: hidden;
+  }
+
+  #app {
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  header {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 20px;
+    background: rgba(20, 12, 28, 0.85);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--divider);
+    z-index: 5;
+  }
+
+  .avatar {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #7c4aa8, #4a2f6e);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    font-size: 15px;
+    color: #f2ecf7;
+    flex: 0 0 auto;
+  }
+
+  .header-text {
+    display: flex;
+    flex-direction: column;
+    line-height: 1.25;
+    min-width: 0;
+  }
+
+  .header-title {
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+  }
+
+  .header-sub {
+    font-size: 12px;
+    color: var(--meta);
+  }
+
+  .header-count {
+    margin-left: auto;
+    font-size: 12px;
+    color: var(--meta);
+    white-space: nowrap;
+  }
+  .header-count b { color: var(--text-dim); font-weight: 500; }
+
+  /* ── date range ─────────────────────────────────────── */
+  #range {
+    display: flex;
+    align-items: flex-end;
+    gap: 6px;
+    margin-left: 10px;
+  }
+
+  .date-field {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .date-field label {
+    font-size: 10.5px;
+    color: var(--meta);
+    padding-left: 2px;
+    line-height: 1;
+    visibility: hidden;
+  }
+  #range.ranged .date-field label { visibility: visible; }
+
+  .date-field input {
+    font-size: 12px;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 8px;
+    color: var(--text-dim);
+    padding: 4px 8px;
+    font-family: inherit;
+    color-scheme: dark;
+    cursor: pointer;
+  }
+  #range.ranged .date-field input,
+  .date-field input:focus-visible {
+    border-color: rgba(255,255,255,0.22);
+    color: var(--text);
+    outline: none;
+  }
+  #range.active .date-field input {
+    border-color: rgba(226,176,74,0.45);
+  }
+
+  #to-field { display: none; }
+  #range.ranged #to-field { display: flex; }
+
+  #range-clear {
+    display: none;
+    align-self: flex-end;
+    font-size: 14px;
+    line-height: 1;
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--meta);
+    border-radius: 8px;
+    padding: 6px 7px;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  #range.ranged #range-clear { display: inline-block; }
+  #range-clear:hover { color: var(--text); background: rgba(255,255,255,0.08); }
+
+  @media (prefers-reduced-motion: no-preference) {
+    #range.ranged #to-field { animation: slide-in 180ms ease-out; }
+    @keyframes slide-in {
+      from { opacity: 0; transform: translateX(-6px); }
+      to   { opacity: 1; transform: none; }
+    }
+  }
+
+  /* ── search bar ─────────────────────────────────────── */
+  #search-bar {
+    flex: 0 0 auto;
+    display: flex;
+    padding: 10px 20px;
+    background: rgba(20, 12, 28, 0.85);
+    backdrop-filter: blur(10px);
+    border-top: 1px solid var(--divider);
+    z-index: 5;
+  }
+  #search-bar[hidden] { display: none; }
+
+  #search-form {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1 1 auto;
+    max-width: 760px;
+    margin: 0 auto;
+  }
+
+  #search-input {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-size: 13px;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 8px;
+    color: var(--text);
+    padding: 6px 10px;
+    font-family: inherit;
+  }
+  #search-input::placeholder { color: var(--meta); }
+  #search-form.bookmarks-only #search-input {
+    border-color: rgba(226,176,74,0.35);
+  }
+
+  #search-count {
+    font-size: 11px;
+    color: var(--meta);
+    min-width: 3.5em;
+    text-align: center;
+    white-space: nowrap;
+  }
+  #search-form.bookmarks-only #search-count { color: var(--gold); }
+
+  #search-form button {
+    font-size: 12px;
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.12);
+    color: var(--text-dim);
+    border-radius: 8px;
+    padding: 5px 9px;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  #search-form button:hover { background: rgba(255,255,255,0.14); }
+
+  /* ── bookmark glyph ─────────────────────────────────── */
+  .bm {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: 0;
+    padding: 0;
+    cursor: pointer;
+    color: var(--meta);
+  }
+  .bm svg {
+    width: 14px;
+    height: 16px;
+    display: block;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.6;
+    stroke-linejoin: round;
+  }
+  .bm[aria-pressed="true"] { color: var(--gold); }
+  .bm[aria-pressed="true"] svg { fill: currentColor; }
+  .bm:focus-visible { outline: 2px solid var(--gold-soft); outline-offset: 2px; border-radius: 4px; }
+
+  #search-form #search-bm {
+    padding: 5px 8px;
+    color: var(--meta);
+  }
+  #search-form #search-bm:hover { color: var(--text-dim); }
+  #search-form #search-bm[aria-pressed="true"] {
+    color: var(--gold);
+    background: rgba(226,176,74,0.10);
+    border-color: rgba(226,176,74,0.35);
+  }
+
+  /* ── scroll area ────────────────────────────────────── */
+  #scroll-area {
+    position: relative;
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  #search-ticks {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 10px;
+    pointer-events: none;
+    z-index: 4;
+  }
+
+  #search-ticks .tick {
+    position: absolute;
+    right: 1px;
+    width: 8px;
+    height: 2px;
+    border-radius: 1px;
+    background: rgba(255, 193, 94, 0.55);
+  }
+  #search-ticks.gold .tick { background: var(--gold-soft); }
+
+  mark {
+    background: rgba(255, 193, 94, 0.32);
+    color: inherit;
+    padding: 0;
+    border-radius: 3px;
+  }
+
+  mark.current {
+    background: #ffc15e;
+    color: #241333;
+  }
+
+  #scroller {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 18px 0 40px;
+    scrollbar-gutter: stable;
+    overflow-anchor: none;
+    scrollbar-color: rgba(255,255,255,0.18) transparent;
+  }
+
+  #scroller::-webkit-scrollbar { width: 10px; }
+  #scroller::-webkit-scrollbar-track { background: transparent; }
+  #scroller::-webkit-scrollbar-thumb {
+    background: rgba(255,255,255,0.12);
+    border-radius: 6px;
+  }
+  #scroller::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
+
+  #spacer-top, #spacer-bottom {
+    width: 100%;
+  }
+
+  #content {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 0 24px;
+  }
+
+  .day-divider {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 26px 0 18px;
+    color: var(--meta);
+    font-size: 12px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    gap: 12px;
+  }
+  .day-divider::before, .day-divider::after {
+    content: "";
+    flex: 1 1 auto;
+    height: 1px;
+    background: var(--divider);
+  }
+
+  .row {
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+    margin: 3px 0;
+    padding: 2px 0;
+  }
+  .row.user { justify-content: flex-end; }
+  .row.companion { justify-content: flex-start; }
+
+  .row.group-start { margin-top: 14px; }
+
+  .bubble-wrap {
+    max-width: 78%;
+    display: flex;
+    flex-direction: column;
+  }
+  .row.user .bubble-wrap { align-items: flex-end; }
+  .row.companion .bubble-wrap { align-items: flex-start; }
+
+  /* The glyph sits on the inner side of the bubble, toward the centre line. */
+  .row .bm.row-bm {
+    flex: 0 0 auto;
+    margin-bottom: 12px;
+    opacity: 0;
+    transition: opacity 120ms ease, color 120ms ease;
+  }
+  .row.user .bm.row-bm { order: -1; }
+  .row:hover .bm.row-bm,
+  .row:focus-within .bm.row-bm,
+  .row .bm.row-bm[aria-pressed="true"] { opacity: 1; }
+  .row .bm.row-bm:hover { color: var(--text-dim); }
+  .row .bm.row-bm[aria-pressed="true"]:hover { color: #F1C35E; }
+  @media (hover: none) {
+    .row .bm.row-bm { opacity: 0.45; }
+  }
+
+  .float-action {
+    font-style: italic;
+    color: var(--action-float);
+    font-size: 13.5px;
+    margin: 0 4px 7px;
+    line-height: 1.4;
+  }
+
+  .bubble {
+    padding: 13px 16px;
+    border-radius: var(--radius);
+    font-size: 15px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    position: relative;
+  }
+
+  .row.user .bubble {
+    background: var(--bubble-user);
+    border-bottom-right-radius: var(--radius-cut);
+  }
+
+  .row.companion .bubble {
+    background: var(--bubble-companion);
+    border-bottom-left-radius: var(--radius-cut);
+  }
+
+  .row.current-bm .bubble {
+    box-shadow: 0 0 0 1.5px var(--gold-soft);
+  }
+
+  .bubble .inline-action {
+    display: block;
+    font-style: italic;
+    color: var(--text);
+    opacity: 0.82;
+    margin-bottom: 10px;
+  }
+  .bubble .inline-action:last-child { margin-bottom: 0; }
+
+  .bubble p {
+    margin: 0 0 10px;
+  }
+  .bubble p:last-child { margin-bottom: 0; }
+
+  .bubble em { font-style: italic; }
+  .bubble strong { font-weight: 600; }
+
+  .timestamp {
+    font-size: 11px;
+    color: var(--meta);
+    margin: 0 6px 6px;
+    letter-spacing: 0.02em;
+  }
+
+  #loading, .empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: var(--meta);
+    font-size: 14px;
+    letter-spacing: 0.02em;
+    text-align: center;
+    padding: 0 24px;
+  }
+
+  /* ── empty state / drop zone ────────────────────────── */
+  .empty-state {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    padding: 24px;
+  }
+  .drop-zone {
+    max-width: 440px;
+    width: 100%;
+    text-align: center;
+    padding: 36px 28px;
+    border: 1.5px dashed rgba(255,255,255,0.16);
+    border-radius: var(--radius);
+    background: rgba(255,255,255,0.03);
+    transition: border-color 120ms ease, background 120ms ease;
+  }
+  body.dragging .drop-zone,
+  body.dragging #scroller {
+    border-color: var(--gold-soft);
+    background: rgba(226,176,74,0.06);
+  }
+  .drop-title { font-size: 17px; font-weight: 600; margin-bottom: 6px; }
+  .drop-sub { font-size: 13px; color: var(--text-dim); margin-bottom: 20px; line-height: 1.5; }
+  .drop-sub code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; color: var(--text); }
+  .drop-actions { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-bottom: 18px; }
+  .drop-actions button {
+    font-size: 13px;
+    font-family: inherit;
+    border-radius: 10px;
+    padding: 8px 14px;
+    cursor: pointer;
+    border: 1px solid rgba(255,255,255,0.14);
+    background: var(--bubble-user);
+    color: var(--text);
+  }
+  .drop-actions button:hover { background: var(--bubble-user-hi); }
+  .drop-actions button.secondary { background: rgba(255,255,255,0.06); color: var(--text-dim); }
+  .drop-actions button.secondary:hover { background: rgba(255,255,255,0.12); color: var(--text); }
+  .drop-note { font-size: 12px; color: var(--meta); }
+  .drop-hint { font-size: 12.5px; color: var(--gold); margin-top: 14px; line-height: 1.5; }
+  .drop-hint[hidden] { display: none; }
+
+  @media (max-width: 640px) {
+    #content { padding: 0 12px; }
+    .bubble-wrap { max-width: 88%; }
+    header { padding: 8px 12px; gap: 8px; }
+    .header-sub { display: none; }
+    .header-count { display: none; }
+    #range { margin-left: auto; }
+    .date-field input { padding: 4px 5px; font-size: 11px; }
+    #search-bar { padding: 8px 12px; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { scroll-behavior: auto !important; transition: none !important; }
+  }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-bookmark" viewBox="0 0 14 16">
+    <path d="M2.5 1.5h9a.5.5 0 0 1 .5.5v12.2a.4.4 0 0 1-.65.32L7 11.2 2.65 14.52A.4.4 0 0 1 2 14.2V2a.5.5 0 0 1 .5-.5z"/>
+  </symbol>
+</svg>
+<div id="app">
+  <header>
+    <div class="avatar" id="avatar">·</div>
+    <div class="header-text">
+      <div class="header-title" id="header-title">fig-viewer</div>
+      <div class="header-sub" id="header-sub">drop an export to begin</div>
+    </div>
+    <div class="header-count" id="header-count"></div>
+    <div id="range">
+      <div class="date-field" id="from-field">
+        <label for="from-input">from</label>
+        <input id="from-input" type="date" title="Jump to date">
+      </div>
+      <div class="date-field" id="to-field">
+        <label for="to-input">to</label>
+        <input id="to-input" type="date" title="End of date range">
+      </div>
+      <button type="button" id="range-clear" title="Clear dates">×</button>
+    </div>
+  </header>
+  <div id="scroll-area">
+    <div id="scroller"></div>
+    <div id="search-ticks"></div>
+  </div>
+  <div id="search-bar" hidden>
+    <form id="search-form">
+      <button type="button" id="search-bm" class="bm" aria-pressed="false" title="Only bookmarked messages">
+        <svg><use href="#i-bookmark"/></svg>
+      </button>
+      <input id="search-input" type="text" placeholder="search…" autocomplete="off">
+      <span id="search-count"></span>
+      <button type="button" id="search-prev" title="Previous match (Shift+Enter)">‹</button>
+      <button type="button" id="search-next" title="Next match (Enter)">›</button>
+      <button type="button" id="search-close" title="Close (Esc)">×</button>
+    </form>
+  </div>
+  <input id="file-input" type="file" accept=".md,.markdown,.txt,.json" hidden>
+</div>
+
+<template id="empty-tpl">
+  <div class="empty-state">
+    <div class="drop-zone">
+      <div class="drop-title">Drop your chat export here</div>
+      <div class="drop-sub">A Figment <code>.md</code> export, or a <code>messages.json</code> made by <code>parse.py</code>.</div>
+      <div class="drop-actions">
+        <button type="button" data-action="choose">Choose file…</button>
+        <button type="button" data-action="sample" class="secondary">Try the sample</button>
+      </div>
+      <div class="drop-note">Everything stays in this browser. Nothing is uploaded.</div>
+      <div class="drop-hint" hidden></div>
+    </div>
+  </div>
+</template>
+
+<script>
+(function(){
+  "use strict";
+
+  const scroller = document.getElementById("scroller");
+  const headerSub = document.getElementById("header-sub");
+  const headerCount = document.getElementById("header-count");
+  const rangeEl = document.getElementById("range");
+  const fromInput = document.getElementById("from-input");
+  const toInput = document.getElementById("to-input");
+  const rangeClear = document.getElementById("range-clear");
+  const searchBar = document.getElementById("search-bar");
+  const searchForm = document.getElementById("search-form");
+  const searchInput = document.getElementById("search-input");
+  const searchCount = document.getElementById("search-count");
+  const searchTicks = document.getElementById("search-ticks");
+  const searchBm = document.getElementById("search-bm");
+  const headerTitle = document.getElementById("header-title");
+  const avatarEl = document.getElementById("avatar");
+  const fileInput = document.getElementById("file-input");
+  const emptyTpl = document.getElementById("empty-tpl");
+
+  const ROW_ESTIMATE = 74; // px, average estimated row height for virtualization math
+  const OVERSCAN = 12; // extra rows rendered above/below viewport
+  const BM_KEY_PREFIX = "fig-viewer:bookmarks:";
+  let bmKey = BM_KEY_PREFIX + "companion";
+  let companionName = "companion";
+
+  let messages = [];
+  let view = [];        // message indices currently shown (after date filter)
+  let rowMeta = [];     // per view position: { idx, top, height, dayLabel, groupStart }
+  let totalHeight = 0;
+  let content, spacerTop, spacerBottom, rowsContainer;
+
+  // Row heights measured once per (message, groupStart) so re-filtering the
+  // view never has to re-lay-out 16k rows.
+  const heightCache = [];  // heightCache[idx] = [heightNoGroupStart, heightGroupStart]
+  let dividerHeight = 0;
+
+  let bodiesLower = [];      // lowercased bodies, built once at init
+  let searchQuery = "";      // active query, lowercased
+  let bookmarksOnly = false; // search-bar toggle
+  let searchMatches = [];    // message indices matching the current criteria
+  let currentMatchPos = -1;  // position within searchMatches
+
+  let rangeFrom = "", rangeTo = "";
+
+  // ── bookmarks ───────────────────────────────────────────────────────────
+
+  let bookmarkKeys = new Set();
+  let msgKeys = [];         // stable key per message, survives re-parsing the export
+  let bookmarked = [];      // bookmarked[idx] boolean
+
+  function hashStr(s){
+    let h = 5381;
+    for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
+    return (h >>> 0).toString(36);
+  }
+
+  function loadBookmarks(){
+    try {
+      // Legacy key format ("<name>-bookmarks") is read once so old bookmarks survive.
+      const raw = localStorage.getItem(bmKey) ?? localStorage.getItem(companionName + "-bookmarks");
+      bookmarkKeys = raw ? new Set(JSON.parse(raw)) : new Set();
+    } catch (_) { bookmarkKeys = new Set(); }
+  }
+
+  function saveBookmarks(){
+    try { localStorage.setItem(bmKey, JSON.stringify([...bookmarkKeys])); } catch (_) {}
+  }
+
+  function toggleBookmark(idx){
+    const key = msgKeys[idx];
+    bookmarked[idx] = !bookmarked[idx];
+    if (bookmarked[idx]) bookmarkKeys.add(key); else bookmarkKeys.delete(key);
+    saveBookmarks();
+    const btn = rowsContainer.querySelector(`.row[data-idx="${idx}"] .row-bm`);
+    if (btn) btn.setAttribute("aria-pressed", String(bookmarked[idx]));
+    if (bookmarksOnly && !searchBar.hidden) recomputeMatches({ keepPosition: true });
+  }
+
+  function makeBookmarkButton(idx, cls){
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "bm " + cls;
+    b.setAttribute("aria-pressed", String(!!bookmarked[idx]));
+    b.title = bookmarked[idx] ? "Remove bookmark" : "Bookmark this message";
+    b.innerHTML = '<svg><use href="#i-bookmark"/></svg>';
+    b.addEventListener("click", (e) => {
+      e.stopPropagation();
+      toggleBookmark(idx);
+      b.title = bookmarked[idx] ? "Remove bookmark" : "Bookmark this message";
+    });
+    return b;
+  }
+
+  // ── rendering helpers ───────────────────────────────────────────────────
+
+  function escapeHtml(s){
+    return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+  }
+
+  // Convert *italic* markdown (whole-line -> action line, inline -> <em>) to HTML,
+  // and split body into paragraphs on blank lines.
+  function renderBody(body){
+    const paragraphs = body.split(/\n\s*\n/);
+    let html = "";
+    for (const para of paragraphs){
+      const trimmed = para.trim();
+      if (!trimmed) continue;
+      const isWholeAction = /^\*[^*]+\*$/.test(trimmed) && !trimmed.slice(1,-1).includes("\n");
+      const escaped = escapeHtml(trimmed);
+      const withEm = escaped
+        .replace(/\*\*([^*\n]+)\*\*/g, "<strong>$1</strong>")
+        .replace(/\*([^*\n]+)\*/g, "<em>$1</em>");
+      if (isWholeAction){
+        html += `<span class="inline-action">${withEm.replace(/^<em>|<\/em>$/g,"")}</span>`;
+      } else {
+        html += `<p>${withEm.replace(/\n/g,"<br>")}</p>`;
+      }
+    }
+    return html;
+  }
+
+  function formatDayLabel(dateStr){
+    const [y,m,d] = dateStr.split("-").map(Number);
+    const dt = new Date(Date.UTC(y, m-1, d));
+    return dt.toLocaleDateString(undefined, { year:"numeric", month:"long", day:"numeric", timeZone:"UTC" });
+  }
+
+  function formatHeaderTime(dateStr, timeStr){
+    return `${dateStr} ${timeStr} UTC`;
+  }
+
+  // ── view + layout ───────────────────────────────────────────────────────
+
+  function computeView(){
+    if (!rangeFrom || !rangeTo){
+      view = messages.map((_, i) => i);
+      return;
+    }
+    const lo = rangeFrom <= rangeTo ? rangeFrom : rangeTo;
+    const hi = rangeFrom <= rangeTo ? rangeTo : rangeFrom;
+    view = [];
+    for (let i = 0; i < messages.length; i++){
+      const d = messages[i].date;
+      if (d >= lo && d <= hi) view.push(i);
+    }
+  }
+
+  // Measure any rows whose (idx, groupStart) height is not yet cached, off-screen.
+  function measureMissing(metas){
+    const probe = document.createElement("div");
+    probe.style.position = "absolute";
+    probe.style.visibility = "hidden";
+    probe.style.top = "-99999px";
+    probe.style.left = "0";
+    probe.style.width = scroller.clientWidth + "px";
+    const probeContent = document.createElement("div");
+    probeContent.id = "content";
+    probe.appendChild(probeContent);
+
+    const pending = [];
+    if (!dividerHeight){
+      const d = document.createElement("div");
+      d.className = "day-divider";
+      d.textContent = "measure";
+      probeContent.appendChild(d);
+      pending.push({ el: d, divider: true });
+    }
+    for (const meta of metas){
+      const slot = meta.groupStart ? 1 : 0;
+      const cached = heightCache[meta.idx];
+      if (cached && cached[slot]) continue;
+      const el = renderRow(messages[meta.idx], meta, meta.idx);
+      probeContent.appendChild(el);
+      pending.push({ el, idx: meta.idx, slot });
+    }
+    if (!pending.length) return;
+
+    document.body.appendChild(probe);
+    for (const p of pending){
+      const h = p.el.getBoundingClientRect().height;
+      if (p.divider) dividerHeight = h;
+      else {
+        if (!heightCache[p.idx]) heightCache[p.idx] = [0, 0];
+        heightCache[p.idx][p.slot] = h;
+      }
+    }
+    document.body.removeChild(probe);
+  }
+
+  function buildRowMeta(){
+    let lastDate = null;
+    let lastSpeaker = null;
+    const metas = [];
+    for (let v = 0; v < view.length; v++){
+      const idx = view[v];
+      const msg = messages[idx];
+      const dayLabel = msg.date !== lastDate ? formatDayLabel(msg.date) : null;
+      const groupStart = msg.speaker !== lastSpeaker || !!dayLabel;
+      metas.push({ idx, top: 0, height: 0, dayLabel, groupStart });
+      lastDate = msg.date;
+      lastSpeaker = msg.speaker;
+    }
+
+    measureMissing(metas);
+
+    let y = 0;
+    for (const m of metas){
+      if (m.dayLabel) y += dividerHeight;
+      m.top = y;
+      m.height = heightCache[m.idx][m.groupStart ? 1 : 0];
+      y += m.height;
+    }
+    rowMeta = metas;
+    totalHeight = y;
+  }
+
+  function invalidateHeights(){
+    heightCache.length = 0;
+    dividerHeight = 0;
+  }
+
+  function findStartPos(scrollTop){
+    let lo = 0, hi = rowMeta.length - 1;
+    while (lo < hi){
+      const mid = (lo + hi) >> 1;
+      if (rowMeta[mid].top + rowMeta[mid].height < scrollTop) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo;
+  }
+
+  function viewPosOf(idx){
+    // binary search for message idx within view (view is ascending)
+    let lo = 0, hi = view.length - 1;
+    while (lo <= hi){
+      const mid = (lo + hi) >> 1;
+      if (view[mid] === idx) return mid;
+      if (view[mid] < idx) lo = mid + 1; else hi = mid - 1;
+    }
+    return -1;
+  }
+
+  function renderRow(msg, meta, idx){
+    const row = document.createElement("div");
+    row.className = "row " + msg.speaker + (meta.groupStart ? " group-start" : "");
+    row.dataset.idx = idx;
+
+    const wrap = document.createElement("div");
+    wrap.className = "bubble-wrap";
+
+    if (meta.groupStart){
+      const ts = document.createElement("div");
+      ts.className = "timestamp";
+      ts.textContent = formatHeaderTime(msg.date, msg.time);
+      wrap.appendChild(ts);
+    }
+
+    const bubble = document.createElement("div");
+    bubble.className = "bubble";
+    bubble.innerHTML = renderBody(msg.body);
+
+    const isCurrent = searchMatches[currentMatchPos] === idx;
+    if (searchQuery){
+      highlightTerm(bubble, searchQuery);
+      if (isCurrent) bubble.querySelectorAll("mark").forEach(m => m.classList.add("current"));
+    } else if (isCurrent && bookmarksOnly){
+      row.classList.add("current-bm");
+    }
+
+    wrap.appendChild(bubble);
+    row.appendChild(wrap);
+    row.appendChild(makeBookmarkButton(idx, "row-bm"));
+    return row;
+  }
+
+  function highlightTerm(root, q){
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    const nodes = [];
+    while (walker.nextNode()) nodes.push(walker.currentNode);
+    for (const node of nodes){
+      const text = node.nodeValue;
+      const lower = text.toLowerCase();
+      let idx = lower.indexOf(q);
+      if (idx === -1) continue;
+      const frag = document.createDocumentFragment();
+      let pos = 0;
+      while (idx !== -1){
+        if (idx > pos) frag.appendChild(document.createTextNode(text.slice(pos, idx)));
+        const mark = document.createElement("mark");
+        mark.textContent = text.slice(idx, idx + q.length);
+        frag.appendChild(mark);
+        pos = idx + q.length;
+        idx = lower.indexOf(q, pos);
+      }
+      if (pos < text.length) frag.appendChild(document.createTextNode(text.slice(pos)));
+      node.parentNode.replaceChild(frag, node);
+    }
+  }
+
+  let renderedStart = -1, renderedEnd = -1;
+
+  function renderVisible(){
+    if (!rowMeta.length){
+      if (renderedStart !== -2){
+        renderedStart = -2; renderedEnd = -2;
+        rowsContainer.innerHTML = "";
+        const e = document.createElement("div");
+        e.className = "empty";
+        e.textContent = rangeFrom && rangeTo
+          ? `No messages between ${rangeFrom} and ${rangeTo}.`
+          : "No messages.";
+        rowsContainer.appendChild(e);
+        spacerTop.style.height = "0px";
+        spacerBottom.style.height = "0px";
+      }
+      return;
+    }
+    const scrollTop = scroller.scrollTop;
+    const viewportH = scroller.clientHeight;
+    const startIdx = Math.max(0, findStartPos(scrollTop) - OVERSCAN);
+    let endIdx = startIdx;
+    while (endIdx < rowMeta.length && rowMeta[endIdx].top < scrollTop + viewportH + OVERSCAN * ROW_ESTIMATE){
+      endIdx++;
+    }
+    endIdx = Math.min(rowMeta.length, endIdx + OVERSCAN);
+
+    if (startIdx === renderedStart && endIdx === renderedEnd) return;
+    renderedStart = startIdx; renderedEnd = endIdx;
+
+    rowsContainer.innerHTML = "";
+    const frag = document.createDocumentFragment();
+    for (let v = startIdx; v < endIdx; v++){
+      const meta = rowMeta[v];
+      if (meta.dayLabel){
+        const div = document.createElement("div");
+        div.className = "day-divider";
+        div.textContent = meta.dayLabel;
+        frag.appendChild(div);
+      }
+      frag.appendChild(renderRow(messages[meta.idx], meta, meta.idx));
+    }
+    rowsContainer.appendChild(frag);
+
+    spacerTop.style.height = rowMeta[startIdx].top + "px";
+    const endTop = endIdx < rowMeta.length ? rowMeta[endIdx].top : totalHeight;
+    spacerBottom.style.height = Math.max(0, totalHeight - endTop) + "px";
+  }
+
+  function forceRender(){
+    renderedStart = -1; renderedEnd = -1;
+    renderVisible();
+  }
+
+  function scrollToViewPos(v){
+    if (!rowMeta.length) { forceRender(); return; }
+    v = Math.max(0, Math.min(rowMeta.length - 1, v));
+    scroller.scrollTop = Math.max(0, rowMeta[v].top - 20);
+    forceRender();
+  }
+
+  function scrollToIndex(idx){
+    const v = viewPosOf(idx);
+    if (v !== -1) scrollToViewPos(v);
+  }
+
+  function scrollToDate(dateStr){
+    let v = view.findIndex(i => messages[i].date >= dateStr);
+    if (v === -1) v = view.length - 1;
+    scrollToViewPos(v);
+  }
+
+  // ── date range ──────────────────────────────────────────────────────────
+
+  function updateHeaderCount(){
+    if (view.length === messages.length){
+      headerCount.textContent = messages.length.toLocaleString() + " messages";
+    } else {
+      headerCount.innerHTML = `<b>${view.length.toLocaleString()}</b> of ${messages.length.toLocaleString()} messages`;
+    }
+  }
+
+  function applyRange(){
+    const active = !!(rangeFrom && rangeTo);
+    rangeEl.classList.toggle("ranged", !!rangeFrom);
+    rangeEl.classList.toggle("active", active);
+    toInput.min = rangeFrom || fromInput.min;
+
+    // Keep the message at the top of the viewport in place if it survives the filter.
+    const anchor = rowMeta.length ? rowMeta[findStartPos(scroller.scrollTop)].idx : -1;
+
+    computeView();
+    buildRowMeta();
+    updateHeaderCount();
+    renderedStart = -1; renderedEnd = -1;
+
+    if (searchBar.hidden){
+      const v = anchor !== -1 ? viewPosOf(anchor) : -1;
+      if (v !== -1) scrollToViewPos(v);
+      else scrollToViewPos(0);
+    } else {
+      recomputeMatches({ keepPosition: false });
+      if (!searchMatches.length){
+        const v = anchor !== -1 ? viewPosOf(anchor) : -1;
+        scrollToViewPos(v !== -1 ? v : 0);
+      }
+    }
+  }
+
+  fromInput.addEventListener("change", () => {
+    const val = fromInput.value;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(val)){
+      // cleared with the native × — drop the whole range
+      rangeFrom = ""; rangeTo = ""; toInput.value = "";
+      applyRange();
+      return;
+    }
+    const wasFiltering = !!(rangeFrom && rangeTo);
+    rangeFrom = val;
+    if (wasFiltering || rangeTo){
+      applyRange();
+    } else {
+      rangeEl.classList.add("ranged");
+      toInput.min = val;
+      scrollToDate(val);
+    }
+  });
+
+  toInput.addEventListener("change", () => {
+    const val = toInput.value;
+    rangeTo = /^\d{4}-\d{2}-\d{2}$/.test(val) ? val : "";
+    applyRange();
+  });
+
+  rangeClear.addEventListener("click", () => {
+    fromInput.value = ""; toInput.value = "";
+    rangeFrom = ""; rangeTo = "";
+    applyRange();
+  });
+
+  // ── search ──────────────────────────────────────────────────────────────
+
+  function criteriaActive(){
+    return !!searchQuery || bookmarksOnly;
+  }
+
+  function updateSearchCount(){
+    if (!criteriaActive()){
+      searchCount.textContent = "";
+    } else if (!searchMatches.length){
+      searchCount.textContent = "0";
+    } else {
+      searchCount.textContent = `${currentMatchPos + 1}/${searchMatches.length}`;
+    }
+  }
+
+  function renderTicks(){
+    searchTicks.innerHTML = "";
+    searchTicks.classList.toggle("gold", bookmarksOnly);
+    if (!searchMatches.length || !totalHeight) return;
+    const seen = new Set();
+    const frag = document.createDocumentFragment();
+    for (const idx of searchMatches){
+      const v = viewPosOf(idx);
+      const pct = Math.round((rowMeta[v].top / totalHeight) * 400) / 4;
+      if (seen.has(pct)) continue;
+      seen.add(pct);
+      const t = document.createElement("div");
+      t.className = "tick";
+      t.style.top = pct + "%";
+      frag.appendChild(t);
+    }
+    searchTicks.appendChild(frag);
+  }
+
+  function gotoMatch(pos){
+    if (!searchMatches.length) return;
+    const len = searchMatches.length;
+    currentMatchPos = ((pos % len) + len) % len;
+    updateSearchCount();
+    scrollToIndex(searchMatches[currentMatchPos]);
+  }
+
+  // Rebuild searchMatches from the current query, bookmark toggle, and view.
+  function recomputeMatches({ keepPosition }){
+    const prevIdx = keepPosition && currentMatchPos >= 0 ? searchMatches[currentMatchPos] : -1;
+    searchMatches = [];
+    currentMatchPos = -1;
+    if (criteriaActive()){
+      for (const i of view){
+        if (bookmarksOnly && !bookmarked[i]) continue;
+        if (searchQuery && !bodiesLower[i].includes(searchQuery)) continue;
+        searchMatches.push(i);
+      }
+    }
+    renderTicks();
+    if (searchMatches.length){
+      let pos = prevIdx !== -1 ? searchMatches.indexOf(prevIdx) : -1;
+      if (pos === -1){
+        const viewTop = rowMeta.length ? rowMeta[findStartPos(scroller.scrollTop)].idx : 0;
+        pos = searchMatches.findIndex(i => i >= viewTop);
+        if (pos === -1) pos = 0;
+      }
+      gotoMatch(pos);
+    } else {
+      updateSearchCount();
+      forceRender();
+    }
+  }
+
+  function runSearch(raw){
+    if (!messages.length) return;
+    const q = raw.trim().toLowerCase();
+    if (q === searchQuery) return;
+    searchQuery = q;
+    recomputeMatches({ keepPosition: false });
+  }
+
+  function setBookmarksOnly(on){
+    bookmarksOnly = on;
+    searchBm.setAttribute("aria-pressed", String(on));
+    searchForm.classList.toggle("bookmarks-only", on);
+    searchInput.placeholder = on ? "search bookmarks…" : "search…";
+    recomputeMatches({ keepPosition: true });
+  }
+
+  function openSearch(){
+    if (!messages.length) return;
+    searchBar.hidden = false;
+    searchInput.focus();
+    searchInput.select();
+    if (bookmarksOnly) recomputeMatches({ keepPosition: false });
+  }
+
+  function closeSearch(){
+    clearTimeout(searchDebounce);
+    searchInput.value = "";
+    searchQuery = "";
+    searchBar.hidden = true;
+    // The bookmark toggle is remembered, but nothing cycles while the bar is closed.
+    searchMatches = [];
+    currentMatchPos = -1;
+    renderTicks();
+    updateSearchCount();
+    forceRender();
+  }
+
+  let searchDebounce = 0;
+  searchInput.addEventListener("input", () => {
+    clearTimeout(searchDebounce);
+    searchDebounce = setTimeout(() => runSearch(searchInput.value), 150);
+  });
+
+  searchForm.addEventListener("submit", (e) => {
+    e.preventDefault();
+    clearTimeout(searchDebounce);
+    if (searchInput.value.trim().toLowerCase() !== searchQuery){
+      runSearch(searchInput.value);
+    } else {
+      gotoMatch(currentMatchPos + 1);
+    }
+  });
+
+  searchInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && e.shiftKey){
+      e.preventDefault();
+      clearTimeout(searchDebounce);
+      gotoMatch(currentMatchPos - 1);
+    } else if (e.key === "Escape"){
+      closeSearch();
+    }
+  });
+
+  searchBm.addEventListener("click", () => setBookmarksOnly(!bookmarksOnly));
+  document.getElementById("search-prev").addEventListener("click", () => gotoMatch(currentMatchPos - 1));
+  document.getElementById("search-next").addEventListener("click", () => gotoMatch(currentMatchPos + 1));
+  document.getElementById("search-close").addEventListener("click", closeSearch);
+
+  window.addEventListener("keydown", (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f"){
+      e.preventDefault();
+      openSearch();
+    } else if (e.key === "Escape" && !searchBar.hidden){
+      closeSearch();
+    }
+  });
+
+  // ── parsing ─────────────────────────────────────────────────────────────
+
+  // A Figment export is Markdown: an optional "## Settings" JSON block, then
+  // "## Conversation" followed by messages that each start with a header line
+  //   **Speaker** · YYYY-MM-DD HH:MM UTC
+  // "You" is the user; any other speaker is the companion.
+  const HEADER_RE = /^\*\*(.+?)\*\* · (\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}) UTC$/;
+
+  function parseExport(text){
+    const lines = text.replace(/^﻿/, "").split(/\r?\n/);
+    let name = "";
+
+    const settingsAt = lines.findIndex(l => l.trim() === "## Settings");
+    if (settingsAt !== -1){
+      const fence = lines.findIndex((l, i) => i > settingsAt && l.trim() === "```json");
+      const end = fence === -1 ? -1 : lines.findIndex((l, i) => i > fence && l.trim() === "```");
+      if (fence !== -1 && end !== -1){
+        try { name = String(JSON.parse(lines.slice(fence + 1, end).join("\n")).companionName || ""); }
+        catch (_) { /* malformed settings block: fall through to other name sources */ }
+      }
+    }
+
+    const convAt = lines.findIndex(l => l.trim() === "## Conversation");
+    let i = convAt === -1 ? 0 : convAt + 1;
+    const n = lines.length;
+    const out = [];
+    let firstOther = "";
+    while (i < n){
+      const m = HEADER_RE.exec(lines[i].trim());
+      if (!m){ i++; continue; }
+      const speaker = m[1], date = m[2], time = m[3];
+      i++;
+      const body = [];
+      while (i < n && !HEADER_RE.test(lines[i].trim())){ body.push(lines[i]); i++; }
+      while (body.length && body[0].trim() === "") body.shift();
+      while (body.length && body[body.length - 1].trim() === "") body.pop();
+      const isUser = speaker === "You";
+      if (!isUser && !firstOther) firstOther = speaker;
+      out.push({ speaker: isUser ? "user" : "companion", date, time, body: body.join("\n") });
+    }
+
+    if (!name){
+      const h1 = lines.find(l => /^# \S/.test(l));
+      name = (h1 ? h1.slice(2).trim() : "") || firstOther || "companion";
+    }
+    return { companionName: name, messages: out };
+  }
+
+  // Accepts either a raw .md export or JSON (a bare message array, or
+  // {companionName, messages} as written by parse.py).
+  function parseInput(text){
+    const first = text.replace(/^﻿/, "").trimStart()[0];
+    if (first === "[" || first === "{"){
+      const data = JSON.parse(text);
+      const arr = Array.isArray(data) ? data : (Array.isArray(data.messages) ? data.messages : []);
+      const name = (!Array.isArray(data) && data.companionName) ? String(data.companionName) : "companion";
+      const msgs = arr.map(m => ({
+        speaker: m.speaker === "user" ? "user" : "companion",
+        date: String(m.date || ""),
+        time: String(m.time || ""),
+        body: String(m.body ?? ""),
+      }));
+      return { companionName: name, messages: msgs };
+    }
+    return parseExport(text);
+  }
+
+  // ── loading ─────────────────────────────────────────────────────────────
+
+  function showEmpty(hint){
+    messages = [];
+    scroller.innerHTML = "";
+    scroller.appendChild(emptyTpl.content.cloneNode(true));
+    const h = scroller.querySelector(".drop-hint");
+    if (hint){ h.textContent = hint; h.hidden = false; }
+    headerTitle.textContent = "fig-viewer";
+    avatarEl.textContent = "·";
+    headerSub.textContent = "drop an export to begin";
+    headerCount.textContent = "";
+    document.title = "fig-viewer";
+  }
+
+  function loadText(text, label){
+    let parsed;
+    try { parsed = parseInput(text); }
+    catch (err) { showEmpty(`Couldn't read ${label}: ${err.message}`); return; }
+    if (!parsed.messages.length){
+      showEmpty(`No messages found in ${label}. Expected a Figment .md export with a "## Conversation" section.`);
+      return;
+    }
+    init(parsed.messages, parsed.companionName);
+  }
+
+  function loadFile(file){
+    if (!file) return;
+    headerSub.textContent = "reading…";
+    file.text().then(t => loadText(t, file.name)).catch(err => showEmpty(`Couldn't read ${file.name}: ${err.message}`));
+  }
+
+  function loadSample(){
+    headerSub.textContent = "loading sample…";
+    fetch("sample/sample-export.md")
+      .then(r => { if (!r.ok) throw new Error(r.status + " " + r.statusText); return r.text(); })
+      .then(t => loadText(t, "the sample"))
+      .catch(() => showEmpty("The sample can't be fetched when the page is opened from a file:// URL. Drop sample/sample-export.md onto the page instead, or serve the folder with `python3 -m http.server`."));
+  }
+
+  scroller.addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-action]");
+    if (!btn) return;
+    if (btn.dataset.action === "choose") fileInput.click();
+    else if (btn.dataset.action === "sample") loadSample();
+  });
+
+  fileInput.addEventListener("change", () => {
+    loadFile(fileInput.files[0]);
+    fileInput.value = "";
+  });
+
+  let dragDepth = 0;
+  window.addEventListener("dragenter", (e) => { e.preventDefault(); dragDepth++; document.body.classList.add("dragging"); });
+  window.addEventListener("dragover", (e) => { e.preventDefault(); });
+  window.addEventListener("dragleave", () => { if (--dragDepth <= 0){ dragDepth = 0; document.body.classList.remove("dragging"); } });
+  window.addEventListener("drop", (e) => {
+    e.preventDefault();
+    dragDepth = 0;
+    document.body.classList.remove("dragging");
+    loadFile(e.dataTransfer && e.dataTransfer.files[0]);
+  });
+
+  // ── init ────────────────────────────────────────────────────────────────
+
+  function resetState(){
+    invalidateHeights();
+    clearTimeout(searchDebounce);
+    searchInput.value = ""; searchQuery = ""; searchBar.hidden = true;
+    searchMatches = []; currentMatchPos = -1; searchTicks.innerHTML = "";
+    rangeFrom = ""; rangeTo = ""; fromInput.value = ""; toInput.value = "";
+    rangeEl.classList.remove("ranged", "active");
+    renderedStart = -1; renderedEnd = -1;
+    scroller.scrollTop = 0;
+  }
+
+  let listenersBound = false;
+  function bindScrollListeners(){
+    if (listenersBound) return;
+    listenersBound = true;
+
+    let scrollTicking = false;
+    scroller.addEventListener("scroll", () => {
+      if (scrollTicking) return;
+      scrollTicking = true;
+      window.requestAnimationFrame(() => {
+        scrollTicking = false;
+        renderVisible();
+      });
+    }, { passive: true });
+
+    let resizeTimer = 0;
+    window.addEventListener("resize", () => {
+      if (!messages.length) return;
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => {
+        const anchor = rowMeta.length ? rowMeta[findStartPos(scroller.scrollTop)].idx : -1;
+        invalidateHeights();
+        buildRowMeta();
+        renderedStart = -1; renderedEnd = -1;
+        if (anchor !== -1) scrollToIndex(anchor); else renderVisible();
+        if (searchMatches.length) renderTicks();
+      }, 120);
+    });
+  }
+
+  function init(data, name){
+    resetState();
+    messages = data;
+    companionName = name || "companion";
+    bmKey = BM_KEY_PREFIX + companionName;
+    bodiesLower = messages.map(m => m.body.toLowerCase());
+    loadBookmarks();
+    msgKeys = messages.map(m => hashStr(`${m.date}|${m.time}|${m.speaker}|${m.body}`));
+    bookmarked = msgKeys.map(k => bookmarkKeys.has(k));
+
+    document.title = `${companionName} — fig-viewer`;
+    headerTitle.textContent = companionName;
+    avatarEl.textContent = companionName.slice(0, 1);
+
+    scroller.innerHTML = "";
+    content = document.createElement("div");
+    content.id = "content";
+
+    spacerTop = document.createElement("div");
+    spacerTop.id = "spacer-top";
+    spacerBottom = document.createElement("div");
+    spacerBottom.id = "spacer-bottom";
+    rowsContainer = document.createElement("div");
+    rowsContainer.id = "rows";
+
+    content.appendChild(spacerTop);
+    content.appendChild(rowsContainer);
+    content.appendChild(spacerBottom);
+    scroller.appendChild(content);
+
+    computeView();
+    buildRowMeta();
+
+    const first = messages[0], last = messages[messages.length - 1];
+    headerSub.textContent = `${first.date} → ${last.date}`;
+    updateHeaderCount();
+    fromInput.min = first.date; fromInput.max = last.date;
+    toInput.min = first.date;   toInput.max = last.date;
+
+    bindScrollListeners();
+    renderVisible();
+    scrollToViewPos(view.length - 1);
+  }
+
+  showEmpty();
+  // index.html?sample auto-loads the bundled sample (handy for a hosted copy).
+  if (new URLSearchParams(location.search).has("sample")) loadSample();
+
+  // Exposed for testing and for scripts that want to feed the viewer directly.
+  window.figViewer = { parseExport, parseInput, load: loadText };
+})();
+</script>
+</body>
+</html>
