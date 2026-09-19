@@ -400,12 +400,10 @@
   .row.user .bm.row-bm { order: -1; }
   .row:hover .bm.row-bm,
   .row:focus-within .bm.row-bm,
+  .row.revealed .bm.row-bm,
   .row .bm.row-bm[aria-pressed="true"] { opacity: 1; }
   .row .bm.row-bm:hover { color: var(--text-dim); }
   .row .bm.row-bm[aria-pressed="true"]:hover { color: #F1C35E; }
-  @media (hover: none) {
-    .row .bm.row-bm { opacity: 0.45; }
-  }
 
   .float-action {
     font-style: italic;
@@ -457,7 +455,10 @@
   .bubble strong { font-weight: 600; }
 
   /* Timestamp sits beside the bookmark glyph on the inner side and, like the
-     glyph, only appears while the row is hovered or focused. */
+     glyph, only appears while the row is hovered, focused, or tapped
+     (.revealed). There is deliberately no "(hover: none)" always-visible
+     fallback: some desktop browsers (touchscreen laptops, some Firefox/Linux
+     setups) report hover:none and would show every glyph permanently. */
   .timestamp {
     flex: 0 0 auto;
     font-size: 11px;
@@ -470,11 +471,8 @@
   }
   .row.user .timestamp { order: -2; }
   .row:hover .timestamp,
-  .row:focus-within .timestamp { opacity: 1; }
-  @media (hover: none) {
-    .timestamp { opacity: 0.45; }
-    .timestamp .ts-date { display: none; }
-  }
+  .row:focus-within .timestamp,
+  .row.revealed .timestamp { opacity: 1; }
 
   #loading, .empty {
     display: flex;
@@ -585,8 +583,8 @@
         <svg><use href="#i-bookmark"/></svg>
       </button>
       <input id="search-input" type="text" placeholder="search…" autocomplete="off">
-      <label class="search-who" title="Show human messages"><input type="checkbox" id="search-human" checked>Human</label>
-      <label class="search-who" title="Show Fig messages"><input type="checkbox" id="search-fig" checked>Fig</label>
+      <label class="search-who" title="Show user messages"><input type="checkbox" id="search-human" checked>user</label>
+      <label class="search-who" title="Show Fig messages"><input type="checkbox" id="search-fig" checked>fig</label>
       <span id="search-count"></span>
       <button type="button" id="search-prev" title="Previous match (Shift+Enter)">‹</button>
       <button type="button" id="search-next" title="Next match (Enter)">›</button>
@@ -673,27 +671,54 @@
     return (h >>> 0).toString(36);
   }
 
-  function loadBookmarks(){
+  function readStoredKeys(storageKey){
     try {
-      // Legacy key format ("<name>-bookmarks") is read once so old bookmarks survive.
-      const raw = localStorage.getItem(bmKey) ?? localStorage.getItem(companionName + "-bookmarks");
-      bookmarkKeys = raw ? new Set(JSON.parse(raw)) : new Set();
-    } catch (_) { bookmarkKeys = new Set(); }
+      const raw = localStorage.getItem(storageKey);
+      const arr = raw ? JSON.parse(raw) : [];
+      return new Set(Array.isArray(arr) ? arr.filter(k => typeof k === "string") : []);
+    } catch (_) { return new Set(); }
   }
 
-  function saveBookmarks(){
-    try { localStorage.setItem(bmKey, JSON.stringify([...bookmarkKeys])); } catch (_) {}
+  // The stored set is the union of the current key and the legacy
+  // "<name>-bookmarks" key, so nothing bookmarked under an older build is lost.
+  function loadBookmarks(){
+    bookmarkKeys = readStoredKeys(bmKey);
+    for (const k of readStoredKeys(companionName + "-bookmarks")) bookmarkKeys.add(k);
+  }
+
+  // Apply a single add/remove against whatever is in storage *right now* rather
+  // than overwriting with this tab's snapshot. Two open tabs (or a re-load while
+  // another tab is still up) used to clobber each other's bookmarks.
+  function persistBookmark(key, on){
+    const stored = readStoredKeys(bmKey);
+    for (const k of readStoredKeys(companionName + "-bookmarks")) stored.add(k);
+    if (on) stored.add(key); else stored.delete(key);
+    try { localStorage.setItem(bmKey, JSON.stringify([...stored])); } catch (_) {}
+    for (const k of stored) bookmarkKeys.add(k);
+    if (!on) bookmarkKeys.delete(key);
   }
 
   function toggleBookmark(idx){
     const key = msgKeys[idx];
     bookmarked[idx] = !bookmarked[idx];
-    if (bookmarked[idx]) bookmarkKeys.add(key); else bookmarkKeys.delete(key);
-    saveBookmarks();
+    persistBookmark(key, bookmarked[idx]);
     const btn = rowsContainer.querySelector(`.row[data-idx="${idx}"] .row-bm`);
     if (btn) btn.setAttribute("aria-pressed", String(bookmarked[idx]));
     if (bookmarksOnly && !searchBar.hidden) recomputeMatches({ keepPosition: true });
   }
+
+  // Another tab changed the bookmarks for this companion: pick them up.
+  window.addEventListener("storage", (e) => {
+    if (!messages.length || e.key !== bmKey) return;
+    loadBookmarks();
+    bookmarked = msgKeys.map(k => bookmarkKeys.has(k));
+    rowsContainer?.querySelectorAll(".row[data-idx] .row-bm").forEach(b => {
+      const i = +b.closest(".row").dataset.idx;
+      b.setAttribute("aria-pressed", String(!!bookmarked[i]));
+      b.title = bookmarked[i] ? "Remove bookmark" : "Bookmark this message";
+    });
+    if (bookmarksOnly && !searchBar.hidden) recomputeMatches({ keepPosition: true });
+  });
 
   function makeBookmarkButton(idx, cls){
     const b = document.createElement("button");
@@ -1275,7 +1300,7 @@
       const arr = Array.isArray(data) ? data : (Array.isArray(data.messages) ? data.messages : []);
       const name = (!Array.isArray(data) && data.companionName) ? String(data.companionName) : "companion";
       const msgs = arr.map(m => ({
-        speaker: m.speaker === "user" ? "user" : "companion",
+        speaker: (m.speaker === "user" || m.speaker === "You") ? "user" : "companion",
         date: String(m.date || ""),
         time: String(m.time || ""),
         body: String(m.body ?? ""),
@@ -1325,7 +1350,16 @@
       .catch(() => showEmpty("The sample can't be fetched when the page is opened from a file:// URL. Drop sample/sample-export.md onto the page instead, or serve the folder with `python3 -m http.server`."));
   }
 
+  // Tap/click on a bubble reveals that row's bookmark glyph and timestamp
+  // (the only way to reach them without a hovering pointer).
+  let revealedRow = null;
   scroller.addEventListener("click", (e) => {
+    if (e.target.closest(".bubble")){
+      const row = e.target.closest(".row");
+      if (revealedRow && revealedRow !== row) revealedRow.classList.remove("revealed");
+      revealedRow = row.classList.toggle("revealed") ? row : null;
+      return;
+    }
     const btn = e.target.closest("[data-action]");
     if (!btn) return;
     if (btn.dataset.action === "choose") fileInput.click();
