@@ -390,7 +390,10 @@
   .row.user .bubble-wrap { align-items: flex-end; }
   .row.companion .bubble-wrap { align-items: flex-start; }
 
-  /* The glyph sits on the inner side of the bubble, toward the centre line. */
+  /* The glyph sits on the inner side of the bubble, toward the centre line, and
+     only appears while the row is hovered, focused, or tapped (.revealed).
+     There is deliberately no "(hover: none)" always-visible fallback: some
+     desktop browsers report hover:none and would show every glyph permanently. */
   .row .bm.row-bm {
     flex: 0 0 auto;
     margin-bottom: 12px;
@@ -454,25 +457,13 @@
   .bubble em { font-style: italic; }
   .bubble strong { font-weight: 600; }
 
-  /* Timestamp sits beside the bookmark glyph on the inner side and, like the
-     glyph, only appears while the row is hovered, focused, or tapped
-     (.revealed). There is deliberately no "(hover: none)" always-visible
-     fallback: some desktop browsers (touchscreen laptops, some Firefox/Linux
-     setups) report hover:none and would show every glyph permanently. */
+  /* Timestamp sits above the first bubble of each group, always visible. */
   .timestamp {
-    flex: 0 0 auto;
     font-size: 11px;
     color: var(--meta);
-    margin-bottom: 14px;
+    margin: 0 6px 6px;
     letter-spacing: 0.02em;
-    white-space: nowrap;
-    opacity: 0;
-    transition: opacity 120ms ease;
   }
-  .row.user .timestamp { order: -2; }
-  .row:hover .timestamp,
-  .row:focus-within .timestamp,
-  .row.revealed .timestamp { opacity: 1; }
 
   #loading, .empty {
     display: flex;
@@ -891,6 +882,13 @@
     const wrap = document.createElement("div");
     wrap.className = "bubble-wrap";
 
+    if (meta.groupStart){
+      const ts = document.createElement("div");
+      ts.className = "timestamp";
+      ts.textContent = `${msg.date} ${msg.time} UTC`;
+      wrap.appendChild(ts);
+    }
+
     const bubble = document.createElement("div");
     bubble.className = "bubble";
     bubble.innerHTML = renderBody(msg.body);
@@ -906,10 +904,6 @@
     wrap.appendChild(bubble);
     row.appendChild(wrap);
     row.appendChild(makeBookmarkButton(idx, "row-bm"));
-    const ts = document.createElement("span");
-    ts.className = "timestamp";
-    ts.innerHTML = `<span class="ts-date">${msg.date} </span>${msg.time} UTC`;
-    row.appendChild(ts);
     return row;
   }
 
