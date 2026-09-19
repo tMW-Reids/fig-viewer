@@ -7,6 +7,8 @@ of messages smoothly and never sends your data anywhere.
 
 ![fig-viewer showing the bundled sample conversation](docs/screenshot.png)
 
+**Live demo:** <https://tmw-reids.github.io/fig-viewer/?sample> (loads the bundled sample; drop your own export onto it just the same).
+
 ## Use it
 
 1. Download or clone this repo.
