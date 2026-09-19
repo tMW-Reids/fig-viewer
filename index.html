@@ -258,6 +258,25 @@
     color: var(--meta);
   }
   #search-form #search-bm:hover { color: var(--text-dim); }
+
+  .search-who {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    color: var(--text-dim);
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+  }
+  .search-who input {
+    margin: 0;
+    width: 12px;
+    height: 12px;
+    accent-color: var(--gold);
+    cursor: pointer;
+  }
+  .search-who:hover { color: var(--text); }
   #search-form #search-bm[aria-pressed="true"] {
     color: var(--gold);
     background: rgba(226,176,74,0.10);
@@ -522,6 +541,7 @@
     #range { margin-left: auto; }
     .date-field input { padding: 4px 5px; font-size: 11px; }
     #search-bar { padding: 8px 12px; }
+    #search-form { gap: 6px; }
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -565,6 +585,8 @@
         <svg><use href="#i-bookmark"/></svg>
       </button>
       <input id="search-input" type="text" placeholder="search…" autocomplete="off">
+      <label class="search-who" title="Show human messages"><input type="checkbox" id="search-human" checked>Human</label>
+      <label class="search-who" title="Show Fig messages"><input type="checkbox" id="search-fig" checked>Fig</label>
       <span id="search-count"></span>
       <button type="button" id="search-prev" title="Previous match (Shift+Enter)">‹</button>
       <button type="button" id="search-next" title="Next match (Enter)">›</button>
@@ -606,6 +628,8 @@
   const searchCount = document.getElementById("search-count");
   const searchTicks = document.getElementById("search-ticks");
   const searchBm = document.getElementById("search-bm");
+  const searchHuman = document.getElementById("search-human");
+  const searchFig = document.getElementById("search-fig");
   const headerTitle = document.getElementById("header-title");
   const avatarEl = document.getElementById("avatar");
   const fileInput = document.getElementById("file-input");
@@ -631,6 +655,7 @@
   let bodiesLower = [];      // lowercased bodies, built once at init
   let searchQuery = "";      // active query, lowercased
   let bookmarksOnly = false; // search-bar toggle
+  let showHuman = true, showFig = true; // search-bar speaker filters (hide rows when unchecked)
   let searchMatches = [];    // message indices matching the current criteria
   let currentMatchPos = -1;  // position within searchMatches
 
@@ -722,7 +747,8 @@
   // ── view + layout ───────────────────────────────────────────────────────
 
   function computeView(){
-    if (!rangeFrom || !rangeTo){
+    const ranged = !!(rangeFrom && rangeTo);
+    if (!ranged && showHuman && showFig){
       view = messages.map((_, i) => i);
       return;
     }
@@ -730,8 +756,10 @@
     const hi = rangeFrom <= rangeTo ? rangeTo : rangeFrom;
     view = [];
     for (let i = 0; i < messages.length; i++){
-      const d = messages[i].date;
-      if (d >= lo && d <= hi) view.push(i);
+      const m = messages[i];
+      if (ranged && (m.date < lo || m.date > hi)) continue;
+      if (m.speaker === "user" ? !showHuman : !showFig) continue;
+      view.push(i);
     }
   }
 
@@ -971,7 +999,11 @@
     rangeEl.classList.toggle("ranged", !!rangeFrom);
     rangeEl.classList.toggle("active", active);
     toInput.min = rangeFrom || fromInput.min;
+    refreshView();
+  }
 
+  // Rebuild the view after any filter (date range, speaker) changes.
+  function refreshView(){
     // Keep the message at the top of the viewport in place if it survives the filter.
     const anchor = rowMeta.length ? rowMeta[findStartPos(scroller.scrollTop)].idx : -1;
 
@@ -1110,6 +1142,12 @@
     recomputeMatches({ keepPosition: true });
   }
 
+  function setSpeakerFilter(){
+    showHuman = searchHuman.checked;
+    showFig = searchFig.checked;
+    refreshView();
+  }
+
   function openSearch(){
     if (!messages.length) return;
     searchBar.hidden = false;
@@ -1128,7 +1166,14 @@
     currentMatchPos = -1;
     renderTicks();
     updateSearchCount();
-    forceRender();
+    // Speaker filters only live while the bar is open: closing restores every message.
+    searchHuman.checked = true; searchFig.checked = true;
+    if (!showHuman || !showFig){
+      showHuman = true; showFig = true;
+      refreshView();
+    } else {
+      forceRender();
+    }
   }
 
   let searchDebounce = 0;
@@ -1158,6 +1203,8 @@
   });
 
   searchBm.addEventListener("click", () => setBookmarksOnly(!bookmarksOnly));
+  searchHuman.addEventListener("change", setSpeakerFilter);
+  searchFig.addEventListener("change", setSpeakerFilter);
   document.getElementById("search-prev").addEventListener("click", () => gotoMatch(currentMatchPos - 1));
   document.getElementById("search-next").addEventListener("click", () => gotoMatch(currentMatchPos + 1));
   document.getElementById("search-close").addEventListener("click", closeSearch);
