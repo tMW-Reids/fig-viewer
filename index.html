@@ -46,6 +46,7 @@
   }
 
   header {
+    position: relative;
     flex: 0 0 auto;
     display: flex;
     align-items: center;
@@ -61,7 +62,7 @@
     width: 36px;
     height: 36px;
     border-radius: 50%;
-    background: linear-gradient(135deg, #7c4aa8, #4a2f6e);
+    background: linear-gradient(135deg, #6f6084, #4d4260);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -90,7 +91,10 @@
   }
 
   .header-count {
-    margin-left: auto;
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
     font-size: 12px;
     color: var(--meta);
     white-space: nowrap;
@@ -102,7 +106,7 @@
     display: flex;
     align-items: flex-end;
     gap: 6px;
-    margin-left: 10px;
+    margin-left: auto;
   }
 
   .date-field {
@@ -433,11 +437,24 @@
   .bubble em { font-style: italic; }
   .bubble strong { font-weight: 600; }
 
+  /* Timestamp sits beside the bookmark glyph on the inner side and, like the
+     glyph, only appears while the row is hovered or focused. */
   .timestamp {
+    flex: 0 0 auto;
     font-size: 11px;
     color: var(--meta);
-    margin: 0 6px 6px;
+    margin-bottom: 14px;
     letter-spacing: 0.02em;
+    white-space: nowrap;
+    opacity: 0;
+    transition: opacity 120ms ease;
+  }
+  .row.user .timestamp { order: -2; }
+  .row:hover .timestamp,
+  .row:focus-within .timestamp { opacity: 1; }
+  @media (hover: none) {
+    .timestamp { opacity: 0.45; }
+    .timestamp .ts-date { display: none; }
   }
 
   #loading, .empty {
@@ -702,10 +719,6 @@
     return dt.toLocaleDateString(undefined, { year:"numeric", month:"long", day:"numeric", timeZone:"UTC" });
   }
 
-  function formatHeaderTime(dateStr, timeStr){
-    return `${dateStr} ${timeStr} UTC`;
-  }
-
   // ── view + layout ───────────────────────────────────────────────────────
 
   function computeView(){
@@ -825,13 +838,6 @@
     const wrap = document.createElement("div");
     wrap.className = "bubble-wrap";
 
-    if (meta.groupStart){
-      const ts = document.createElement("div");
-      ts.className = "timestamp";
-      ts.textContent = formatHeaderTime(msg.date, msg.time);
-      wrap.appendChild(ts);
-    }
-
     const bubble = document.createElement("div");
     bubble.className = "bubble";
     bubble.innerHTML = renderBody(msg.body);
@@ -847,6 +853,10 @@
     wrap.appendChild(bubble);
     row.appendChild(wrap);
     row.appendChild(makeBookmarkButton(idx, "row-bm"));
+    const ts = document.createElement("span");
+    ts.className = "timestamp";
+    ts.innerHTML = `<span class="ts-date">${msg.date} </span>${msg.time} UTC`;
+    row.appendChild(ts);
     return row;
   }
 
