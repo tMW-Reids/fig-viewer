@@ -822,6 +822,13 @@
   }
 
   function buildRowMeta(){
+    // A speaker filter hides whole turns between the rows that survive it, so no
+    // filtered row continues the row above it: each one starts a group of its own
+    // and prints its own stamp. Without this, filtering makes every remaining row
+    // the same speaker, so every message but each day's first collapses into one
+    // long group and loses its date/time entirely (the stamp element is only
+    // built for group starts).
+    const speakerFiltered = !(showHuman && showFig);
     let lastDate = null;
     let lastSpeaker = null;
     const metas = [];
@@ -829,7 +836,7 @@
       const idx = view[v];
       const msg = messages[idx];
       const dayLabel = msg.date !== lastDate ? formatDayLabel(msg.date) : null;
-      const groupStart = msg.speaker !== lastSpeaker || !!dayLabel;
+      const groupStart = speakerFiltered || msg.speaker !== lastSpeaker || !!dayLabel;
       metas.push({ idx, top: 0, height: 0, dayLabel, groupStart });
       lastDate = msg.date;
       lastSpeaker = msg.speaker;
