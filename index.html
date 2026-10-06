@@ -822,6 +822,14 @@
   }
 
   function buildRowMeta(){
+    // Under a speaker filter the other side's turns are hidden from between the rows
+    // that remain, so the row above can no longer be read as this message's
+    // continuation: without this, every message but each day's first folds into one
+    // long group and loses its date/time entirely (the stamp element is built only
+    // for group starts). Each filtered message opens its own group and prints its own
+    // stamp — even a run that reads as one group in the unfiltered timeline, because
+    // a stamp belongs to a message the reader can see.
+    const speakerFiltered = !(showHuman && showFig);
     let lastDate = null;
     let lastSpeaker = null;
     const metas = [];
@@ -829,7 +837,7 @@
       const idx = view[v];
       const msg = messages[idx];
       const dayLabel = msg.date !== lastDate ? formatDayLabel(msg.date) : null;
-      const groupStart = msg.speaker !== lastSpeaker || !!dayLabel;
+      const groupStart = speakerFiltered || msg.speaker !== lastSpeaker || !!dayLabel;
       metas.push({ idx, top: 0, height: 0, dayLabel, groupStart });
       lastDate = msg.date;
       lastSpeaker = msg.speaker;
@@ -1344,8 +1352,8 @@
       .catch(() => showEmpty("The sample can't be fetched when the page is opened from a file:// URL. Drop sample/sample-export.md onto the page instead, or serve the folder with `python3 -m http.server`."));
   }
 
-  // Tap/click on a bubble reveals that row's bookmark glyph and timestamp
-  // (the only way to reach them without a hovering pointer).
+  // Tap/click on a bubble reveals that row's bookmark glyph
+  // (the only way to reach it without a hovering pointer).
   let revealedRow = null;
   scroller.addEventListener("click", (e) => {
     if (e.target.closest(".bubble")){
