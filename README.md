@@ -70,6 +70,45 @@ Settings block, falling back to the top-level heading, then to the first non-`Yo
 The viewer also accepts the JSON that `parse.py` writes (below), or a bare JSON array of
 `{speaker, date, time, body}` objects.
 
+### Inner thoughts
+
+The app shows a companion's inner thought outside and above the message bubble, so it is
+not part of the message body and the app's own export leaves it out entirely. An export
+enriched by `fig-chat-export` carries those thoughts in a `## Inner Thoughts` section of
+its own, **ahead of `## Conversation`**:
+
+~~~markdown
+## Inner Thoughts
+
+<prose>
+
+### 5
+
+```text
+A thought.
+```
+~~~
+
+`### <n>` is the 0-based index of a message in the `## Conversation` section below, and the
+fenced block under it is that message's thought, verbatim. Thoughts are intermittent: a
+message with no entry had none rendered, which is a fact about the conversation rather than
+a gap in the export.
+
+The section sits above `## Conversation` on purpose. This viewer — and every earlier copy
+of it — reads all the lines between two message headers into that message's body, so a
+thought written next to its own message would be swallowed into the *previous* message's
+body and change what is rendered. Everything before `## Conversation` is skipped instead,
+which makes the section **invisible to a viewer that does not know about it** and keeps the
+conversation below the app's own bytes.
+
+When the section is present, the viewer shows each thought above its bubble in the app's own
+colour, and search covers thoughts as well as message bodies. `parse.py` adds a `thought`
+key to exactly the messages that have one, so the JSON for an export without the section is
+unchanged.
+
+`sample/sample-export-thoughts.md` is the bundled example; `sample/sample-export.md` is the
+same conversation without the section.
+
 ## Optional: `parse.py`
 
 If you want the messages as JSON for your own scripts:
@@ -80,7 +119,8 @@ python3 parse.py path/to/export.md
 
 This writes `export.json` next to the input (`-o out.json` to choose a path, `-o -` for
 stdout) shaped as `{"companionName": "...", "messages": [...]}` with `speaker` set to
-`"user"` or `"companion"`. It needs only Python 3, no packages.
+`"user"` or `"companion"`, plus `thought` on any message that has one (see
+[Inner thoughts](#inner-thoughts)). It needs only Python 3, no packages.
 
 ## Development
 
@@ -95,7 +135,16 @@ then open <http://localhost:8000/?sample>. The `?sample` flag auto-loads the bun
 sample, which is also handy for a hosted copy.
 
 The parser is exposed as `window.figViewer.parseExport(text)` for quick checks from the
-console, and `parse.py` implements the same rules in Python.
+console, and `parse.py` implements the same rules in Python. `parse.py`'s checks are plain
+asserts with no test framework or dependencies:
+
+```bash
+python3 tests/test_parse.py
+```
+
+They pin the claim that matters most here: an export enriched with an inner-thoughts
+section parses to the same messages, with the same bodies, as the plain export it was made
+from — and a malformed section never throws or corrupts the conversation.
 
 Real exports are personal. Keep them out of the repo: `.gitignore` already excludes
 `exports/`, `messages.json`, and image files.
