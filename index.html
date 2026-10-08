@@ -16,6 +16,9 @@
     --text: #F2ECF7;
     --text-dim: #C9BFDA;
     --action-float: #8D82A3;
+    /* The app's own colour for an inner thought, borrowed so an enriched export
+       reads the way the app reads. */
+    --thought: #DFB486;
     --meta: #5f5470;
     --divider: rgba(255,255,255,0.06);
     --gold: #E2B04A;
@@ -414,6 +417,20 @@
     font-size: 13.5px;
     margin: 0 4px 7px;
     line-height: 1.4;
+  }
+
+  /* An inner thought: the app renders it outside and above the bubble, italic and
+     muted, so it is set apart from the message it belongs to. Only an enriched
+     export has any — see README, "Inner thoughts". */
+  .thought {
+    font-style: italic;
+    color: var(--thought);
+    font-size: 13.5px;
+    line-height: 1.45;
+    margin: 0 4px 7px;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    opacity: 0.92;
   }
 
   .bubble {
@@ -897,14 +914,29 @@
       wrap.appendChild(ts);
     }
 
+    // The app puts a companion's inner thought outside and above the bubble, so it
+    // goes before the bubble here too. Rendered verbatim: this viewer applies no
+    // transform of its own.
+    let thought = null;
+    if (msg.thought){
+      thought = document.createElement("div");
+      thought.className = "thought";
+      thought.textContent = msg.thought;
+      wrap.appendChild(thought);
+    }
+
     const bubble = document.createElement("div");
     bubble.className = "bubble";
     bubble.innerHTML = renderBody(msg.body);
 
     const isCurrent = searchMatches[currentMatchPos] === idx;
     if (searchQuery){
+      if (thought) highlightTerm(thought, searchQuery);
       highlightTerm(bubble, searchQuery);
-      if (isCurrent) bubble.querySelectorAll("mark").forEach(m => m.classList.add("current"));
+      if (isCurrent){
+        bubble.querySelectorAll("mark").forEach(m => m.classList.add("current"));
+        if (thought) thought.querySelectorAll("mark").forEach(m => m.classList.add("current"));
+      }
     } else if (isCurrent && bookmarksOnly){
       row.classList.add("current-bm");
     }
@@ -1253,6 +1285,52 @@
   // "You" is the user; any other speaker is the companion.
   const HEADER_RE = /^\*\*(.+?)\*\* · (\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}) UTC$/;
 
+  // An enriched export also carries a "## Inner Thoughts" section ahead of
+  // "## Conversation" — see README, "Inner thoughts". The app's own exports have no
+  // such section, and nothing here changes when it is absent.
+  const THOUGHT_HEADING = "## Inner Thoughts";
+  const THOUGHT_INDEX_RE = /^### (\d+)$/;
+  const THOUGHT_FENCE_RE = /^(`{3,})([^\s`]*)\s*$/;
+
+  // {index -> thought} for the messages of the conversation below. The section sits
+  // before "## Conversation" because the message loop reads every line between two
+  // headers into that message's body: a thought written next to its own message
+  // would be swallowed into the *previous* message's body. Everything above
+  // "## Conversation" is skipped instead, so a parser that knows nothing of the
+  // section ignores it and the conversation below stays the app's own bytes.
+  //
+  // The index is the 0-based position of the message in the conversation, and a
+  // block is closed by the first backtick run at least as long as the one that
+  // opened it, so a thought containing a fence cannot terminate its own block.
+  function parseInnerThoughts(lines, before){
+    const at = lines.findIndex((l, i) => i < before && l.trim() === THOUGHT_HEADING);
+    const out = new Map();
+    if (at === -1) return out;
+    let i = at + 1;
+    while (i < before){
+      if (/^## /.test(lines[i])) break;
+      const m = THOUGHT_INDEX_RE.exec(lines[i].trim());
+      if (!m){ i++; continue; }
+      const index = Number(m[1]);
+      let j = i + 1;
+      while (j < before && lines[j].trim() === "") j++;
+      const fence = j < before ? THOUGHT_FENCE_RE.exec(lines[j].trim()) : null;
+      if (!fence || (fence[2] && fence[2] !== "text")){ i++; continue; }
+      const run = fence[1].length;
+      const body = [];
+      let k = j + 1;
+      while (k < before){
+        const close = THOUGHT_FENCE_RE.exec(lines[k].trim());
+        if (close && close[1].length >= run) break;
+        body.push(lines[k]);
+        k++;
+      }
+      out.set(index, body.join("\n").trim());
+      i = k + 1;
+    }
+    return out;
+  }
+
   function parseExport(text){
     const lines = text.replace(/^﻿/, "").split(/\r?\n/);
     let name = "";
@@ -1268,6 +1346,7 @@
     }
 
     const convAt = lines.findIndex(l => l.trim() === "## Conversation");
+    const thoughts = parseInnerThoughts(lines, convAt === -1 ? 0 : convAt);
     let i = convAt === -1 ? 0 : convAt + 1;
     const n = lines.length;
     const out = [];
@@ -1283,7 +1362,12 @@
       while (body.length && body[body.length - 1].trim() === "") body.pop();
       const isUser = speaker === "You";
       if (!isUser && !firstOther) firstOther = speaker;
-      out.push({ speaker: isUser ? "user" : "companion", date, time, body: body.join("\n") });
+      const message = { speaker: isUser ? "user" : "companion", date, time, body: body.join("\n") };
+      // Only when there is one, so an export with no thoughts section parses to
+      // exactly the messages it did before.
+      const thought = thoughts.get(out.length);
+      if (thought) message.thought = thought;
+      out.push(message);
     }
 
     if (!name){
@@ -1301,12 +1385,17 @@
       const data = JSON.parse(text);
       const arr = Array.isArray(data) ? data : (Array.isArray(data.messages) ? data.messages : []);
       const name = (!Array.isArray(data) && data.companionName) ? String(data.companionName) : "companion";
-      const msgs = arr.map(m => ({
-        speaker: (m.speaker === "user" || m.speaker === "You") ? "user" : "companion",
-        date: String(m.date || ""),
-        time: String(m.time || ""),
-        body: String(m.body ?? ""),
-      }));
+      const msgs = arr.map(m => {
+        const msg = {
+          speaker: (m.speaker === "user" || m.speaker === "You") ? "user" : "companion",
+          date: String(m.date || ""),
+          time: String(m.time || ""),
+          body: String(m.body ?? ""),
+        };
+        // parse.py writes this key only for a message that has a thought.
+        if (m.thought) msg.thought = String(m.thought);
+        return msg;
+      });
       return { companionName: name, messages: msgs };
     }
     return parseExport(text);
@@ -1432,7 +1521,9 @@
     messages = data;
     companionName = name || "companion";
     bmKey = BM_KEY_PREFIX + companionName;
-    bodiesLower = messages.map(m => m.body.toLowerCase());
+    // An inner thought is searchable too: a term the companion only thought is a
+    // term worth finding, and it is highlighted in the thought where it sits.
+    bodiesLower = messages.map(m => (m.thought ? m.thought + "\n" + m.body : m.body).toLowerCase());
     loadBookmarks();
     msgKeys = messages.map(m => hashStr(`${m.date}|${m.time}|${m.speaker}|${m.body}`));
     bookmarked = msgKeys.map(k => bookmarkKeys.has(k));
